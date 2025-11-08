@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import anthropic
+import httpx
 import os
 from youtube_transcript_api import YouTubeTranscriptApi
 import re
@@ -8,9 +9,18 @@ import re
 app = Flask(__name__)
 CORS(app)
 
-# Configure Anthropic
+# Configure Anthropic with explicit httpx client to avoid Railway proxy issues
+import httpx
+
+# Create httpx client without proxy support to avoid Railway conflicts
+http_client = httpx.Client(
+    timeout=60.0,
+    follow_redirects=True
+)
+
 anthropic_client = anthropic.Anthropic(
-    api_key=os.getenv('ANTHROPIC_API_KEY')
+    api_key=os.getenv('ANTHROPIC_API_KEY'),
+    http_client=http_client
 )
 
 # In-memory cache for transcripts (in production, use Redis or database)
