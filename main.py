@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
+import anthropic
 import os
 from youtube_transcript_api import YouTubeTranscriptApi
 import re
@@ -8,8 +8,10 @@ import re
 app = Flask(__name__)
 CORS(app)
 
-# Configure OpenAI
-openai.api_key = os.getenv('OPENAI_API_KEY')
+# Configure Anthropic
+anthropic_client = anthropic.Anthropic(
+    api_key=os.getenv('ANTHROPIC_API_KEY')
+)
 
 # In-memory cache for transcripts (in production, use Redis or database)
 transcript_cache = {}
@@ -55,8 +57,8 @@ def get_cached_transcript(video_id):
 def health_check():
     return jsonify({
         "status": "healthy", 
-        "message": "YouTube AI Tutor API is running",
-        "api_key_configured": bool(openai.api_key),
+        "message": "YouTube AI Tutor API is running with Claude",
+        "api_key_configured": bool(os.getenv('ANTHROPIC_API_KEY')),
         "cached_videos": len(transcript_cache)
     })
 
@@ -85,26 +87,23 @@ def ask_tutor():
             video_transcript = get_cached_transcript(video_id)
             if video_transcript:
                 # Use only relevant portion of transcript to control costs
-                context += f"\nTranscript: {video_transcript[:2000]}..."
+                context += f"\nTranscript: {video_transcript[:3000]}..."
         
-        # Get AI response with cost-optimized model
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",  # Cost-optimized model
+        # Get AI response using Claude
+        message = anthropic_client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=800,
+            temperature=0.7,
+            system="You are a helpful AI tutor. Answer questions about the video content clearly and concisely. If the question relates to a specific time in the video, reference that context. Keep responses focused and educational. Use a friendly, encouraging tone.",
             messages=[
                 {
-                    "role": "system", 
-                    "content": "You are a helpful AI tutor. Answer questions about the video content clearly and concisely. If the question relates to a specific time in the video, reference that context. Keep responses focused and educational."
-                },
-                {
-                    "role": "user", 
+                    "role": "user",
                     "content": f"Context: {context}\n\nQuestion: {question}"
                 }
-            ],
-            max_tokens=500,  # Control response length and cost
-            temperature=0.7
+            ]
         )
         
-        answer = response.choices[0].message.content
+        answer = message.content[0].text
         print(f"AI Response generated successfully")
         
         return jsonify({
